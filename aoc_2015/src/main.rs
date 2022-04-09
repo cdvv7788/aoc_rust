@@ -1,74 +1,58 @@
 use std::fs::File;
-use std::io::prelude::*;
+use std::io::{self, BufRead};
 use std::path::Path;
 
-fn calculate_delta(x: char) -> i32 {
-    match x {
-        '(' => 1,
-        ')' => -1,
-        _ => 0,
-    }
+struct Rectangular{
+    height: u32,
+    length: u32,
+    width : u32,
 }
 
-fn count_parenthesis(address: &String) -> i32 {
-    let count = &address
-        .chars()
-        .map(|x: char| -> i32 {
-            calculate_delta(x)
-        })
-        .reduce(|a, b| a + b);
-    count.unwrap()
+fn calculate_area(rect: Rectangular) -> u32{
+    // 2*l*w + 2*w*h + 2*h*l
+    let faces = [rect.length*rect.width, rect.width*rect.height, rect.height*rect.length];
+    let min_area = faces.iter().min().unwrap();
+    let total_area = faces.iter().map(|x| 2*x).reduce(|a, b| a+b).unwrap();
+    total_area + min_area
 }
 
-fn find_basement_position(address: &String) -> u32 {
-    let mut current_address = 0;
-    for (position, value) in address.chars().enumerate() {
-        current_address += calculate_delta(value);
-        if current_address == -1 {
-            return (position+1) as u32
+fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
+where P: AsRef<Path>, {
+    let file = File::open(filename)?;
+    Ok(io::BufReader::new(file).lines())
+}
+
+fn parse_line(rect_str: String) -> Rectangular {
+    let split: Vec<u32> = rect_str.split("x").map(|x: &str|x.parse().unwrap()).collect();
+    Rectangular{height: split[0], length: split[1], width: split[2]}
+}
+
+fn main(){
+    let mut areas: Vec<u32> = Vec::new();
+    if let Ok(lines) = read_lines("./input/day2.txt") {
+        // Consumes the iterator, returns an (Optional) String
+        for line in lines {
+            if let Ok(value) = line {
+                areas.push(calculate_area(parse_line(value)));
+            }
         }
     }
-    panic!("Never reached the basement");
+    println!("{:?}", areas.iter().sum::<u32>());
 }
 
-fn main() {
-    let path = Path::new("./input/day1.txt");
-    let display = path.display();
-    let mut file = match File::open(&path) {
-        Err(why) => panic!("couldn't open {}: {}", display, why),
-        Ok(file) => file,
-    };
-
-    let mut test_str = String::new();
-    match file.read_to_string(&mut test_str) {
-        Err(why) => panic!("couldn't read {}: {}", display, why),
-        Ok(_) => (),
-    }
-
-    println!("The final floor is: {}", count_parenthesis(&test_str));
-    println!("The first basement entry position is: {}", find_basement_position(&test_str));
-}
 
 #[cfg(test)]
-mod tests {
+mod tests{
     use super::*;
 
     #[test]
-    fn test_count_parenthesis(){
-        assert_eq!(count_parenthesis(&String::from("(())")), 0);
-        assert_eq!(count_parenthesis(&String::from("()()")), 0);
-        assert_eq!(count_parenthesis(&String::from("(((")), 3);
-        assert_eq!(count_parenthesis(&String::from("(()(()(")), 3);
-        assert_eq!(count_parenthesis(&String::from("))(((((")), 3);
-        assert_eq!(count_parenthesis(&String::from("())")), -1);
-        assert_eq!(count_parenthesis(&String::from("))(")), -1);
-        assert_eq!(count_parenthesis(&String::from(")))")), -3);
-        assert_eq!(count_parenthesis(&String::from(")())())")), -3);
+    fn test_calculate_area(){
+        assert_eq!(calculate_area(Rectangular{height: 2,length: 3,width: 4}), 58);
+        assert_eq!(calculate_area(Rectangular{height: 1,length: 1,width: 10}), 43);
     }
 
     #[test]
-    fn test_basement_position(){
-        assert_eq!(find_basement_position(&String::from(")")), 1);
-        assert_eq!(find_basement_position(&String::from("()())")), 5);
+    fn test_parse_line(){
+        assert_eq!(parse_line(String::from("1x1x10")).width, 10);
     }
 }
