@@ -35,7 +35,28 @@ fn calculate_visits(movements: &String) -> u32{
     }
 
     visited.len() as u32
+}
 
+fn calculate_visits_v2(movements: &String) -> u32 {
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut current_location_santa = Location(0, 0);
+    let mut current_location_robo = Location(0, 0);
+    visited.insert(String::from(&current_location_santa));
+
+    let mut is_santa_turn = true;
+    for movement in movements.chars() {
+        if is_santa_turn {
+            current_location_santa = calculate_location(&current_location_santa, movement);
+            visited.insert(String::from(&current_location_santa));
+            is_santa_turn = false;
+        } else {
+            current_location_robo = calculate_location(&current_location_robo, movement);
+            visited.insert(String::from(&current_location_robo));
+            is_santa_turn = true;
+        }
+    }
+
+    visited.len() as u32
 }
 
 fn main(){
@@ -52,7 +73,8 @@ fn main(){
         Ok(_) => (),
     }
 
-    println!("{}", calculate_visits(&test_str));
+    println!("visits for santa alone: {}", calculate_visits(&test_str));
+    println!("visits for santa with robo help: {}", calculate_visits_v2(&test_str));
 }
 
 #[cfg(test)]
@@ -64,5 +86,12 @@ mod tests {
         assert_eq!(calculate_visits(&String::from(">")), 2);
         assert_eq!(calculate_visits(&String::from("^>v<")), 4);
         assert_eq!(calculate_visits(&String::from("^v^v^v^v^v")), 2);
+    }
+
+    #[test]
+    fn test_calculate_visits_v2(){
+        assert_eq!(calculate_visits_v2(&Strings::from("^v")), 3);
+        assert_eq!(calculate_visits_v2(&Strings::from("^>v<")), 3);
+        assert_eq!(calculate_visits_v2(&Strings::from("^v^v^v^v^v")), 11);
     }
 }
