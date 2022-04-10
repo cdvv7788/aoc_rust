@@ -46,6 +46,37 @@ fn check_nice_string(to_test: String) -> bool {
     found_vowels.len() >= 3 && repeated_char && !found_forbidden
 }
 
+fn check_nice_string_v2(to_test: String) -> bool {
+    // Now, a nice string is one with all of the following properties:
+    // It contains a pair of any two letters that appears at least twice in the string without overlapping,
+    // like xyxy (xy) or aabcdefgaa (aa), but not like aaa (aa, but it overlaps).
+    // It contains at least one letter which repeats with exactly one letter between them, like xyx, abcdefeghi (efe), or even aaa.
+    let mut found_match = false;
+    let mut found_overlap = true;
+    let mut found_repeated_char = false;
+    for (key_1, (a, b)) in to_test.chars().tuple_windows().enumerate(){
+        let to_test_with_offset = &to_test[key_1 + 1..];
+        for (key_2, (c, d)) in to_test_with_offset.chars().tuple_windows().enumerate(){
+            // Check for matches and overlaps in the whole string
+            // key_2 starts 1 element after key_1. If key_2 is zero, it means the windows are overlapping.
+            // println!("({},{}) - ({}, {}) - ({}, {})", a, b, c, d, key_1, key_2);
+            if (a, b) == (c, d) {
+                found_match = true;
+                if key_2 != 0 { 
+                    found_overlap = false;
+                }
+            }
+
+            // Check for repeated chars with an element in the middle
+            if key_2 == 0 && a == d {
+                found_repeated_char = true;
+            }
+
+        }
+    }
+    found_match && !found_overlap && found_repeated_char
+}
+
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
 where P: AsRef<Path>, {
     let file = File::open(filename)?;
@@ -58,7 +89,8 @@ fn main(){
         // Consumes the iterator, returns an (Optional) String
         for line in lines {
             if let Ok(value) = line {
-                checked_strings.push(check_nice_string(value));
+                // checked_strings.push(check_nice_string(value));
+                checked_strings.push(check_nice_string_v2(value));
             }
         }
     }
@@ -79,5 +111,17 @@ mod tests {
         assert!(!check_nice_string(String::from("jchzalrnumimnmhp")));
         assert!(!check_nice_string(String::from("haegwjzuvuyypxyu")));
         assert!(!check_nice_string(String::from("dvszwmarrgswjxmb")));
+    }
+
+    #[test]
+    fn test_check_nice_string_v2() {
+        assert!(check_nice_string_v2(String::from("qjhvhtzxzqqjkmpb")));
+        assert!(check_nice_string_v2(String::from("xxyxx")));
+        assert!(check_nice_string_v2(String::from("xyxy")));
+        assert!(check_nice_string_v2(String::from("aaaa"))); // had trouble figuring out this case was missing
+        assert!(check_nice_string_v2(String::from("abaaaa")));
+        assert!(!check_nice_string_v2(String::from("uurcxstgmygtbstg")));
+        assert!(!check_nice_string_v2(String::from("ieodomkazucvgmuy")));
+        assert!(!check_nice_string_v2(String::from("aaa")));
     }
 }
