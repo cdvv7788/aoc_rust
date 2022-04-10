@@ -1,24 +1,21 @@
+use md5::{Md5, Digest};
 
-fn check_signature(target: &String) -> bool {
-    let mut to_match = target.chars();
-    let mut counter = 0;
-    for _ in 0..5 {
-        if (to_match).next().unwrap() == '0' {
-            counter += 1;
-            if counter == 5 {
-                return true
-            }
-        }
-    }
-    false
+fn check_signature(target: &[u8]) -> bool {
+    // this is a list of u8 (bytes) so all we need to check is if the first
+    // bytes are zero, and the third one is below 16 (00001111)
+    // When looking for the 6 zeroes, just check for the 3 first bytes == 0
+    //target[0] == 0 && target[1] == 0 && target[2] == 16
+    target[0] == 0 && target[1] == 0 && target[2] == 0
 }
 
 fn mine_adventcoin(secret_key: &String) -> i32{
     let mut decimal = 0;
     loop {
         let to_test = format!("{}{}", secret_key, decimal);
-        let digest = format!("{:x}", md5::compute(to_test.as_bytes()));
-        if check_signature(&digest) {
+        let mut hasher = Md5::new();
+        hasher.input(to_test.as_bytes()); //ewwww
+        let digest = hasher.result();
+        if check_signature(&digest[0..=2]) {
             return decimal
         }
         decimal += 1;
