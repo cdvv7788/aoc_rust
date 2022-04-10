@@ -6,7 +6,7 @@ use regex::Regex;
 use lazy_static::lazy_static;
 
 struct Grid (
-    Box<[[bool; 1000]; 1000]>
+    Box<[[u8; 1000]; 1000]>
 );
 
 struct Rectangle {
@@ -28,17 +28,15 @@ enum Operation{
 
 impl Default for Grid {
     fn default() -> Self {
-        Grid(Box::new([[false; 1000]; 1000]))
+        Grid(Box::new([[0; 1000]; 1000]))
     }
 }
 
 fn count_grid_on(grid: &mut Grid) -> u32 {
-    let mut counter = 0;
+    let mut counter: u32 = 0;
     for element in grid.0.iter(){
         for inner_element in element.iter(){
-            if *inner_element {
-                counter += 1;
-            }
+            counter += *inner_element as u32;
         }
     }
     counter
@@ -47,10 +45,15 @@ fn count_grid_on(grid: &mut Grid) -> u32 {
 fn turn_grid_to_value(grid: &mut Grid, rectangle: &Rectangle, operation: Operation) {
     for x in rectangle.bottom_left.x..=rectangle.top_right.x {
         for y in rectangle.bottom_left.y..=rectangle.top_right.y {
-            let value = match operation {
-                Operation::On => true,
-                Operation::Off => false,
-                Operation::Toggle => !grid.0[x][y],
+            let delta: i32 = match operation {
+                Operation::On => 1,
+                Operation::Off => -1,
+                Operation::Toggle => 2,
+            };
+            let value: u8 = if (grid.0[x][y] as i32) + delta >= 0 {
+                (grid.0[x][y] as i32 + delta) as u8
+            } else {
+                0
             };
             grid.0[x][y] = value;
         }
@@ -103,7 +106,7 @@ mod tests {
     #[test]
     fn test_count_grid_on() {
         assert_eq!(count_grid_on(&mut Default::default()), 0);
-        assert_eq!(count_grid_on(&mut Grid(Box::new([[true;1000];1000]))), 1000000);
+        assert_eq!(count_grid_on(&mut Grid(Box::new([[1;1000];1000]))), 1000000);
     }
 
     #[test]
@@ -115,7 +118,7 @@ mod tests {
         turn_grid_to_value(&mut grid, &Rectangle{bottom_left: Point{x: 0, y: 0}, top_right: Point{x: 499, y: 999}}, Operation::Off);
         assert_eq!(count_grid_on(&mut grid), 500000);
         turn_grid_to_value(&mut grid, &Rectangle{bottom_left: Point{x: 0, y: 0}, top_right: Point{x: 999, y: 499}}, Operation::Toggle);
-        assert_eq!(count_grid_on(&mut grid), 500000); //bad test, not very accurate
+        assert_eq!(count_grid_on(&mut grid), 1500000); //bad test, not very accurate
     }
 
     #[test]
