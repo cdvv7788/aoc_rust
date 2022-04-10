@@ -1,80 +1,79 @@
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
-use itertools::Itertools;
+use std::default::Default;
+use regex::Regex;
+use lazy_static::lazy_static;
 
+struct Grid (
+    Box<[[bool; 1000]; 1000]>
+);
 
-fn check_nice_string(to_test: String) -> bool {
-    // A nice string is one with all of the following properties:
-    // It contains at least three vowels (aeiou only), like aei, xazegov, or aeiouaeiouaeiou.
-    // It contains at least one letter that appears twice in a row, like xx, abcdde (dd), or aabbccdd (aa, bb, cc, or dd).
-    // It does not contain the strings ab, cd, pq, or xy, even if they are part of one of the other requirements.
-
-    let vowels = ['a', 'e', 'i', 'o', 'u'];
-    let forbidden_combinations = [('a', 'b'), ('c', 'd'), ('p', 'q'), ('x', 'y')];
-    let mut found_vowels: Vec<char> = Vec::new();
-    let mut repeated_char = false;
-    let mut found_forbidden = false;
-
-    for (key, (a, b)) in to_test.chars().tuple_windows().enumerate(){
-        // Check for vowels
-        if key == 0 {
-            if vowels.contains(&a) {
-                found_vowels.push(a);
-            }
-        }
-        if vowels.contains(&b) {
-            found_vowels.push(b);
-        }
-
-        // check for repeated characters
-        if !repeated_char {
-            if a == b {
-                repeated_char = true;
-            }
-        }
-
-        // check for forbidden combinations
-        if !found_forbidden {
-            for combination in forbidden_combinations {
-                if (a, b) == combination {
-                    found_forbidden = true;
-                }
-            }
-        }
-    }
-    found_vowels.len() >= 3 && repeated_char && !found_forbidden
+struct Rectangle {
+    bottom_left: Point,
+    top_right: Point,
 }
 
-fn check_nice_string_v2(to_test: String) -> bool {
-    // Now, a nice string is one with all of the following properties:
-    // It contains a pair of any two letters that appears at least twice in the string without overlapping,
-    // like xyxy (xy) or aabcdefgaa (aa), but not like aaa (aa, but it overlaps).
-    // It contains at least one letter which repeats with exactly one letter between them, like xyx, abcdefeghi (efe), or even aaa.
-    let mut found_match = false;
-    let mut found_overlap = true;
-    let mut found_repeated_char = false;
-    for (key_1, (a, b)) in to_test.chars().tuple_windows().enumerate(){
-        let to_test_with_offset = &to_test[key_1 + 1..];
-        for (key_2, (c, d)) in to_test_with_offset.chars().tuple_windows().enumerate(){
-            // Check for matches and overlaps in the whole string
-            // key_2 starts 1 element after key_1. If key_2 is zero, it means the windows are overlapping.
-            // println!("({},{}) - ({}, {}) - ({}, {})", a, b, c, d, key_1, key_2);
-            if (a, b) == (c, d) {
-                found_match = true;
-                if key_2 != 0 { 
-                    found_overlap = false;
-                }
-            }
+struct Point {
+    x: usize,
+    y: usize,
+}
 
-            // Check for repeated chars with an element in the middle
-            if key_2 == 0 && a == d {
-                found_repeated_char = true;
-            }
+#[derive(Debug, PartialEq, Eq)]
+enum Operation{
+    On,
+    Off,
+    Toggle,
+}
 
+impl Default for Grid {
+    fn default() -> Self {
+        Grid(Box::new([[false; 1000]; 1000]))
+    }
+}
+
+fn count_grid_on(grid: &mut Grid) -> u32 {
+    let mut counter = 0;
+    for element in grid.0.iter(){
+        for inner_element in element.iter(){
+            if *inner_element {
+                counter += 1;
+            }
         }
     }
-    found_match && !found_overlap && found_repeated_char
+    counter
+}
+
+fn turn_grid_to_value(grid: &mut Grid, rectangle: &Rectangle, operation: Operation) {
+    for x in rectangle.bottom_left.x..=rectangle.top_right.x {
+        for y in rectangle.bottom_left.y..=rectangle.top_right.y {
+            let value = match operation {
+                Operation::On => true,
+                Operation::Off => false,
+                Operation::Toggle => !grid.0[x][y],
+            };
+            grid.0[x][y] = value;
+        }
+    }
+}
+
+fn parse_line(instruction: String) -> (Operation, Rectangle) {
+    // compiled a single time
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"(turn on|turn off|toggle) ([0-9]*),([0-9]*) through ([0-9]*),([0-9]*)").unwrap();
+    }
+    // need to consume the iterator, even if we expect a single match
+    for capture in RE.captures_iter(&instruction[..]){
+        let operation = match &capture[1] {
+            "turn on" => Operation::On,
+            "turn off" => Operation::Off,
+            _ => Operation::Toggle,
+        };
+        let rectangle = Rectangle{bottom_left: Point{x: capture[2].parse().unwrap(), y: capture[3].parse().unwrap()},
+                                  top_right: Point{x: capture[4].parse().unwrap(), y: capture[5].parse().unwrap()}};
+        return (operation, rectangle)
+    }
+    panic!()
 }
 
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
@@ -84,20 +83,17 @@ where P: AsRef<Path>, {
 }
 
 fn main(){
-    let mut checked_strings: Vec<bool> = Vec::new();
-    if let Ok(lines) = read_lines("./input/day5.txt") {
+    let mut grid: Grid = Default::default();
+    if let Ok(lines) = read_lines("./input/day6.txt") {
         // Consumes the iterator, returns an (Optional) String
         for line in lines {
             if let Ok(value) = line {
-                // checked_strings.push(check_nice_string(value));
-                checked_strings.push(check_nice_string_v2(value));
+                let (operation, rectangle) = parse_line(value);
+                turn_grid_to_value(&mut grid, &rectangle, operation);
             }
         }
     }
-
-    let nice_strings = checked_strings.into_iter().map(|x|if x { 1 } else { 0 }).reduce(|a,b|a+b).unwrap();
-    println!("{} nice strings were found", nice_strings);
-
+    println!("Lights on: {}", count_grid_on(&mut grid));
 }
 
 #[cfg(test)]
@@ -105,23 +101,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_check_nice_string() {
-        assert!(check_nice_string(String::from("ugknbfddgicrmopn")));
-        assert!(check_nice_string(String::from("aaa")));
-        assert!(!check_nice_string(String::from("jchzalrnumimnmhp")));
-        assert!(!check_nice_string(String::from("haegwjzuvuyypxyu")));
-        assert!(!check_nice_string(String::from("dvszwmarrgswjxmb")));
+    fn test_count_grid_on() {
+        assert_eq!(count_grid_on(&mut Default::default()), 0);
+        assert_eq!(count_grid_on(&mut Grid(Box::new([[true;1000];1000]))), 1000000);
     }
 
     #[test]
-    fn test_check_nice_string_v2() {
-        assert!(check_nice_string_v2(String::from("qjhvhtzxzqqjkmpb")));
-        assert!(check_nice_string_v2(String::from("xxyxx")));
-        assert!(check_nice_string_v2(String::from("xyxy")));
-        assert!(check_nice_string_v2(String::from("aaaa"))); // had trouble figuring out this case was missing
-        assert!(check_nice_string_v2(String::from("abaaaa")));
-        assert!(!check_nice_string_v2(String::from("uurcxstgmygtbstg")));
-        assert!(!check_nice_string_v2(String::from("ieodomkazucvgmuy")));
-        assert!(!check_nice_string_v2(String::from("aaa")));
+    fn test_turn_grid_to_value() {
+        // testing with side-effects...bad. Returning a new grid with the new values would be cleaner...and more expensive
+        let mut grid = Default::default();
+        turn_grid_to_value(&mut grid, &Rectangle{bottom_left: Point{x: 0, y: 0}, top_right: Point{x: 999, y: 999}}, Operation::On);
+        assert_eq!(count_grid_on(&mut grid), 1000000);
+        turn_grid_to_value(&mut grid, &Rectangle{bottom_left: Point{x: 0, y: 0}, top_right: Point{x: 499, y: 999}}, Operation::Off);
+        assert_eq!(count_grid_on(&mut grid), 500000);
+        turn_grid_to_value(&mut grid, &Rectangle{bottom_left: Point{x: 0, y: 0}, top_right: Point{x: 999, y: 499}}, Operation::Toggle);
+        assert_eq!(count_grid_on(&mut grid), 500000); //bad test, not very accurate
+    }
+
+    #[test]
+    fn test_parse_line() {
+        // test toggle
+        let (operation, rectangle) = parse_line(String::from("toggle 678,333 through 752,957"));
+        assert_eq!(Operation::Toggle, operation);
+        assert_eq!(rectangle.bottom_left.x, 678);
+        assert_eq!(rectangle.bottom_left.y, 333);
+        assert_eq!(rectangle.top_right.x, 752);
+        assert_eq!(rectangle.top_right.y, 957);
+
+        // test on
+        let (operation, rectangle) = parse_line(String::from("turn on 150,20 through 652,719"));
+        assert_eq!(Operation::On, operation);
+        assert_eq!(rectangle.bottom_left.x, 150);
+        assert_eq!(rectangle.bottom_left.y, 20);
+        assert_eq!(rectangle.top_right.x, 652);
+        assert_eq!(rectangle.top_right.y, 719);
+
+        //test off
+        let (operation, rectangle) = parse_line(String::from("turn off 782,143 through 808,802"));
+        assert_eq!(Operation::Off, operation);
+        assert_eq!(rectangle.bottom_left.x, 782);
+        assert_eq!(rectangle.bottom_left.y, 143);
+        assert_eq!(rectangle.top_right.x, 808);
+        assert_eq!(rectangle.top_right.y, 802);
     }
 }
