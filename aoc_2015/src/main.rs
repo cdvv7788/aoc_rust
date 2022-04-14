@@ -22,8 +22,18 @@ fn count_characters(line: &str) -> u32 {
         }
         previous = current_char;
     }
-    println!("{} - {} - {}", line, count_chars, count_escaped);
     count_chars as u32 - count_escaped as u32
+}
+
+fn encode_line(line: &str) -> u32 {
+    let mut count_encoded = 2;
+    for current_char in line.chars() {
+        count_encoded += 1;
+        if current_char == '\\' || current_char == '\"' {
+            count_encoded += 1;
+        }
+    }
+    count_encoded - line.len() as u32
 }
 
 fn sum_lines(strings: &str) -> u32 {
@@ -34,14 +44,37 @@ fn sum_lines(strings: &str) -> u32 {
         .unwrap()
 }
 
+fn sum_lines_2(strings: &str) -> u32 {
+    strings
+        .lines()
+        .map(|x| encode_line(x))
+        .reduce(|a, b| a + b)
+        .unwrap()
+}
+
 fn main() {
-    let output = sum_lines(FILE_TEXT);
+    let output = sum_lines_2(FILE_TEXT);
     println!("{}", output);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_encode_line() {
+        let str_1 = "\"\"";
+        let str_2 = "\"abc\"";
+        let str_3 = "\"aaa\\\"aaa\"";
+        let str_4 = "\"\\x27\"";
+        let str_5 = "\"\\\"";
+
+        assert_eq!(encode_line(str_1), 4);
+        assert_eq!(encode_line(str_2), 4);
+        assert_eq!(encode_line(str_3), 6);
+        assert_eq!(encode_line(str_4), 5);
+        assert_eq!(encode_line(str_5), 5);
+    }
 
     #[test]
     fn test_count_characters() {
