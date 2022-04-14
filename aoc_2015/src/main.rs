@@ -1,102 +1,140 @@
-use std::fs::File;
-use std::io::{self, BufRead};
-use std::path::Path;
-use std::default::Default;
-use regex::Regex;
 use lazy_static::lazy_static;
+use regex::Regex;
+use std::collections::HashMap;
 
-struct Grid (
-    Box<[[u8; 1000]; 1000]>
-);
+const FILE_TEXT: &str = include_str!("../input/day7.txt");
 
-struct Rectangle {
-    bottom_left: Point,
-    top_right: Point,
+#[derive(PartialEq, Debug)]
+enum Operation {
+    NOOP,
+    NOT,
+    AND,
+    OR,
+    LSHIFT,
+    RSHIFT,
+    UNDEFINED,
 }
 
-struct Point {
-    x: usize,
-    y: usize,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum Operation{
-    On,
-    Off,
-    Toggle,
-}
-
-impl Default for Grid {
-    fn default() -> Self {
-        Grid(Box::new([[0; 1000]; 1000]))
-    }
-}
-
-fn count_grid_on(grid: &mut Grid) -> u32 {
-    let mut counter: u32 = 0;
-    for element in grid.0.iter(){
-        for inner_element in element.iter(){
-            counter += *inner_element as u32;
+impl Operation {
+    fn can_run(&self, wire_a: Option<u16>, wire_b: Option<u16>) -> bool {
+        match *self {
+            Operation::NOOP | Operation::NOT => wire_a != None,
+            _ => wire_a != None && wire_b != None,
         }
     }
-    counter
-}
 
-fn turn_grid_to_value(grid: &mut Grid, rectangle: &Rectangle, operation: Operation) {
-    for x in rectangle.bottom_left.x..=rectangle.top_right.x {
-        for y in rectangle.bottom_left.y..=rectangle.top_right.y {
-            let delta: i32 = match operation {
-                Operation::On => 1,
-                Operation::Off => -1,
-                Operation::Toggle => 2,
-            };
-            let value: u8 = if (grid.0[x][y] as i32) + delta >= 0 {
-                (grid.0[x][y] as i32 + delta) as u8
-            } else {
-                0
-            };
-            grid.0[x][y] = value;
+    fn run(&self, wire_a: Option<u16>, wire_b: Option<u16>) -> Option<u16> {
+        if self.can_run(wire_a, wire_b) {
+            Some(match *self {
+                Operation::NOOP => wire_a.unwrap(),
+                Operation::NOT => !wire_a.unwrap(),
+                Operation::AND => wire_a.unwrap() & wire_b.unwrap(),
+                Operation::OR => wire_a.unwrap() | wire_b.unwrap(),
+                Operation::LSHIFT => wire_a.unwrap() << wire_b.unwrap(),
+                Operation::RSHIFT => wire_a.unwrap() >> wire_b.unwrap(),
+                Operation::UNDEFINED => panic!(), // this value exists just for this
+            })
+        } else {
+            None
         }
     }
 }
 
-fn parse_line(instruction: String) -> (Operation, Rectangle) {
-    // compiled a single time
+fn eval_instruction(
+    instruction: &str,
+    wires: &HashMap<String, u16>,
+) -> Option<(String, Option<u16>)> {
+    let mut operation: Operation = Operation::UNDEFINED;
+    let mut wire_a: Option<u16> = None;
+    let mut wire_b: Option<u16> = None;
+    let mut target: String = String::from("");
+
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"(turn on|turn off|toggle) ([0-9]*),([0-9]*) through ([0-9]*),([0-9]*)").unwrap();
+        static ref RE_PATTERN_1: Regex =
+            Regex::new(r"^\s*(|NOT?)\s*([a-z0-9]*)\s->\s([a-z]*)$").unwrap();
+        static ref RE_PATTERN_2: Regex =
+            Regex::new(r"^\s*([a-z0-9]*)\s(AND|OR|LSHIFT|RSHIFT)\s([a-z0-9]*)\s->\s([a-z]*)$")
+                .unwrap();
     }
-    // need to consume the iterator, even if we expect a single match
-    for capture in RE.captures_iter(&instruction[..]){
-        let operation = match &capture[1] {
-            "turn on" => Operation::On,
-            "turn off" => Operation::Off,
-            _ => Operation::Toggle,
-        };
-        let rectangle = Rectangle{bottom_left: Point{x: capture[2].parse().unwrap(), y: capture[3].parse().unwrap()},
-                                  top_right: Point{x: capture[4].parse().unwrap(), y: capture[5].parse().unwrap()}};
-        return (operation, rectangle)
+
+    if RE_PATTERN_1.is_match(instruction) {
+        for cap in RE_PATTERN_1.captures_iter(instruction) {
+            if &cap[1] == "NOT" {
+                operation = Operation::NOT;
+            } else {
+                operation = Operation::NOOP;
+            }
+            wire_a = cap[2].parse::<u16>().ok();
+            if wire_a == None {
+                if let Some(wire_a_resolved) = wires.get(&cap[2]) {
+                    wire_a = Some(*wire_a_resolved);
+                }
+            }
+            wire_b = None;
+            target = String::from(&cap[3]);
+        }
+    } else if RE_PATTERN_2.is_match(instruction) {
+        for cap in RE_PATTERN_2.captures_iter(instruction) {
+            operation = match &cap[2] {
+                "AND" => Operation::AND,
+                "OR" => Operation::OR,
+                "LSHIFT" => Operation::LSHIFT,
+                "RSHIFT" => Operation::RSHIFT,
+                _ => Operation::UNDEFINED,
+            };
+
+            wire_a = cap[1].parse::<u16>().ok();
+            if wire_a == None {
+                if let Some(wire_a_resolved) = wires.get(&cap[1]) {
+                    wire_a = Some(*wire_a_resolved);
+                }
+            }
+            wire_b = cap[3].parse::<u16>().ok();
+            if wire_b == None {
+                if let Some(wire_b_resolved) = wires.get(&cap[3]) {
+                    wire_b = Some(*wire_b_resolved);
+                }
+            }
+            target = String::from(&cap[4]);
+        }
+    } else {
+        panic!(); // Unrecoverable error. There is an error in the instructions.
     }
-    panic!()
+    Some((target, operation.run(wire_a, wire_b)))
 }
 
-fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-where P: AsRef<Path>, {
-    let file = File::open(filename)?;
-    Ok(io::BufReader::new(file).lines())
-}
-
-fn main(){
-    let mut grid: Grid = Default::default();
-    if let Ok(lines) = read_lines("./input/day6.txt") {
-        // Consumes the iterator, returns an (Optional) String
-        for line in lines {
-            if let Ok(value) = line {
-                let (operation, rectangle) = parse_line(value);
-                turn_grid_to_value(&mut grid, &rectangle, operation);
+fn wire_circuit(instructions: &str) -> HashMap<String, u16> {
+    let mut wires: HashMap<String, u16> = HashMap::new();
+    let mut pending_instructions = String::from("");
+    let mut running_instructions = instructions.to_string();
+    loop {
+        for instruction in running_instructions.lines() {
+            if let Some((key, output)) = eval_instruction(instruction, &wires) {
+                if let Some(value) = output {
+                    if let Some(value) = wires.get(&key) {
+                        println!("Already exists {}", value);
+                    }
+                    wires.insert(key, value);
+                } else {
+                    pending_instructions = format!("{}\n{}", pending_instructions, &instruction);
+                }
+            } else {
+                pending_instructions = format!("{}\n{}", pending_instructions, &instruction);
             }
         }
+        if pending_instructions.is_empty() {
+            break;
+        } else {
+            running_instructions = pending_instructions.trim().to_string();
+            pending_instructions = String::from("");
+        }
     }
-    println!("Lights on: {}", count_grid_on(&mut grid));
+    wires
+}
+
+fn main() {
+    let wires = wire_circuit(FILE_TEXT);
+    println!("{:?}", wires["a"]);
 }
 
 #[cfg(test)]
@@ -104,47 +142,81 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_count_grid_on() {
-        assert_eq!(count_grid_on(&mut Default::default()), 0);
-        assert_eq!(count_grid_on(&mut Grid(Box::new([[1;1000];1000]))), 1000000);
+    fn test_wire_circuit() {
+        let instructions = "123 -> x
+                            456 -> y
+                            x AND y -> d
+                            x OR y -> e
+                            x LSHIFT 2 -> f
+                            y RSHIFT 2 -> g
+                            NOT x -> h
+                            NOT y -> i";
+        let wires = wire_circuit(instructions);
+        assert_eq!(wires["i"], 65079);
     }
 
     #[test]
-    fn test_turn_grid_to_value() {
-        // testing with side-effects...bad. Returning a new grid with the new values would be cleaner...and more expensive
-        let mut grid = Default::default();
-        turn_grid_to_value(&mut grid, &Rectangle{bottom_left: Point{x: 0, y: 0}, top_right: Point{x: 999, y: 999}}, Operation::On);
-        assert_eq!(count_grid_on(&mut grid), 1000000);
-        turn_grid_to_value(&mut grid, &Rectangle{bottom_left: Point{x: 0, y: 0}, top_right: Point{x: 499, y: 999}}, Operation::Off);
-        assert_eq!(count_grid_on(&mut grid), 500000);
-        turn_grid_to_value(&mut grid, &Rectangle{bottom_left: Point{x: 0, y: 0}, top_right: Point{x: 999, y: 499}}, Operation::Toggle);
-        assert_eq!(count_grid_on(&mut grid), 1500000); //bad test, not very accurate
+    fn test_eval_instruction() {
+        let wires = HashMap::new();
+        assert_eq!(
+            eval_instruction("123 -> x", &wires).unwrap(),
+            (String::from("x"), Some(123))
+        );
+        assert_eq!(
+            eval_instruction("NOT 0 -> x", &wires).unwrap(),
+            (String::from("x"), Some(65535))
+        );
+        assert_eq!(
+            eval_instruction("1 AND 1 -> x", &wires).unwrap(),
+            (String::from("x"), Some(1))
+        );
+        assert_eq!(
+            eval_instruction("0 AND 1 -> x", &wires).unwrap(),
+            (String::from("x"), Some(0))
+        );
+        assert_eq!(
+            eval_instruction("1 LSHIFT 2 -> x", &wires).unwrap(),
+            (String::from("x"), Some(4))
+        );
+        assert_eq!(
+            eval_instruction("1 RSHIFT 2 -> x", &wires).unwrap(),
+            (String::from("x"), Some(0))
+        );
     }
-
     #[test]
-    fn test_parse_line() {
-        // test toggle
-        let (operation, rectangle) = parse_line(String::from("toggle 678,333 through 752,957"));
-        assert_eq!(Operation::Toggle, operation);
-        assert_eq!(rectangle.bottom_left.x, 678);
-        assert_eq!(rectangle.bottom_left.y, 333);
-        assert_eq!(rectangle.top_right.x, 752);
-        assert_eq!(rectangle.top_right.y, 957);
-
-        // test on
-        let (operation, rectangle) = parse_line(String::from("turn on 150,20 through 652,719"));
-        assert_eq!(Operation::On, operation);
-        assert_eq!(rectangle.bottom_left.x, 150);
-        assert_eq!(rectangle.bottom_left.y, 20);
-        assert_eq!(rectangle.top_right.x, 652);
-        assert_eq!(rectangle.top_right.y, 719);
-
-        //test off
-        let (operation, rectangle) = parse_line(String::from("turn off 782,143 through 808,802"));
-        assert_eq!(Operation::Off, operation);
-        assert_eq!(rectangle.bottom_left.x, 782);
-        assert_eq!(rectangle.bottom_left.y, 143);
-        assert_eq!(rectangle.top_right.x, 808);
-        assert_eq!(rectangle.top_right.y, 802);
+    fn test_operation_can_run() {
+        assert!(Operation::NOOP.can_run(Some(0), None));
+        assert!(!Operation::NOOP.can_run(None, Some(0)));
+        assert!(Operation::NOT.can_run(Some(0), None));
+        assert!(!Operation::NOT.can_run(None, Some(0)));
+        assert!(Operation::AND.can_run(Some(0), Some(0)));
+        assert!(!Operation::AND.can_run(None, Some(0)));
+        assert!(Operation::OR.can_run(Some(0), Some(0)));
+        assert!(!Operation::OR.can_run(Some(0), None));
+        assert!(Operation::LSHIFT.can_run(Some(0), Some(0)));
+        assert!(!Operation::LSHIFT.can_run(Some(0), None));
+        assert!(Operation::RSHIFT.can_run(Some(0), Some(0)));
+        assert!(!Operation::RSHIFT.can_run(Some(0), None));
+    }
+    #[test]
+    fn test_operation_run() {
+        assert_eq!(Operation::NOOP.run(Some(15), None), Some(15));
+        assert_eq!(
+            Operation::NOT.run(Some(0b0000000000000000), None),
+            Some(0b1111111111111111)
+        );
+        assert_eq!(
+            Operation::AND.run(Some(0b111111), Some(0b101010)),
+            Some(0b101010)
+        );
+        assert_eq!(
+            Operation::OR.run(Some(0b111111), Some(0b101010)),
+            Some(0b111111)
+        );
+        assert_eq!(
+            Operation::LSHIFT.run(Some(0b111111), Some(2)),
+            Some(0b11111100)
+        );
+        assert_eq!(Operation::RSHIFT.run(Some(0b111111), Some(2)), Some(0b1111));
     }
 }
