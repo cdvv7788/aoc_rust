@@ -63,8 +63,8 @@ fn get_all_locations(distances: &Vec<Distance>) -> HashSet<String> {
 }
 
 fn calculate_shortest_distance(
-    cities: HashSet<String>,
-    distances_map: HashMap<(String, String), u32>,
+    cities: &HashSet<String>,
+    distances_map: &HashMap<(String, String), u32>,
 ) -> u32 {
     let mut min_distance = 0;
     for route in cities.iter().permutations(cities.len()) {
@@ -81,17 +81,54 @@ fn calculate_shortest_distance(
     min_distance
 }
 
+fn calculate_longest_distance(
+    cities: &HashSet<String>,
+    distances_map: &HashMap<(String, String), u32>,
+) -> u32 {
+    let mut max_distance = 0;
+    for route in cities.iter().permutations(cities.len()) {
+        let mut distance = 0;
+        for (city_a, city_b) in route.iter().tuple_windows() {
+            distance += distances_map[&(String::from(*city_a), String::from(*city_b))];
+        }
+        max_distance = cmp::max(max_distance, distance);
+    }
+    max_distance
+}
+
 fn main() {
     let distances = parse_list_into_distance(FILE_TEXT);
     let distance_table = construct_distance_table(&distances);
     let cities = get_all_locations(&distances);
-    let min_distance = calculate_shortest_distance(cities, distance_table);
-    println!("this is it: {}", min_distance);
+    let min_distance = calculate_shortest_distance(&cities, &distance_table);
+    let max_distance = calculate_longest_distance(&cities, &distance_table);
+    println!(
+        "min_distance is {} and max_distance is {}",
+        min_distance, max_distance
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_calculate_longest_distance() {
+        let mut cities = HashSet::new();
+        cities.insert(String::from("London"));
+        cities.insert(String::from("Dublin"));
+        cities.insert(String::from("Belfast"));
+
+        let mut map = HashMap::new();
+        map.insert((String::from("London"), String::from("Dublin")), 464);
+        map.insert((String::from("Dublin"), String::from("London")), 464);
+        map.insert((String::from("London"), String::from("Belfast")), 518);
+        map.insert((String::from("Belfast"), String::from("London")), 518);
+        map.insert((String::from("Dublin"), String::from("Belfast")), 141);
+        map.insert((String::from("Belfast"), String::from("Dublin")), 141);
+
+        assert_eq!(calculate_longest_distance(&cities, &map), 982);
+    }
 
     #[test]
     fn test_calculate_shortest_distance() {
@@ -108,7 +145,7 @@ mod tests {
         map.insert((String::from("Dublin"), String::from("Belfast")), 141);
         map.insert((String::from("Belfast"), String::from("Dublin")), 141);
 
-        assert_eq!(calculate_shortest_distance(cities, map), 605);
+        assert_eq!(calculate_shortest_distance(&cities, &map), 605);
     }
 
     #[test]
