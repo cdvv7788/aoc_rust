@@ -1,60 +1,92 @@
-const FILE_TEXT: &str = include_str!("../input/day8.txt");
+use itertools::Itertools;
+use lazy_static::lazy_static;
+use regex::Regex;
+use std::cmp;
+use std::collections::{HashMap, HashSet};
 
-fn count_characters(line: &str) -> u32 {
-    // very lazy hardcoded approach
-    let count_chars = line.len();
-    let mut count_escaped: i32 = 0;
-    let mut previous = 'x';
-    for current_char in line.chars() {
-        count_escaped += 1;
-        if current_char == 'x' {
-            if previous == '\\' {
-                count_escaped -= 3;
-            }
+const FILE_TEXT: &str = include_str!("../input/day9.txt");
+
+#[derive(Eq, PartialEq, Debug)]
+struct Distance {
+    origin: String,
+    destination: String,
+    distance: u32,
+}
+
+impl From<&str> for Distance {
+    fn from(data: &str) -> Self {
+        lazy_static! {
+            static ref DISTANCE_RE: Regex =
+                Regex::new(r"^([a-zA-Z]*)\sto\s([a-zA-Z]*)\s=\s([0-9]*)$").unwrap();
         }
-        if current_char == '\\' && previous == '\\' {
-            count_escaped -= 1;
-            previous = 'x';
-            continue;
+        for cap in DISTANCE_RE.captures_iter(data) {
+            return Distance {
+                origin: cap[1].to_string(),
+                destination: cap[2].to_string(),
+                distance: cap[3].parse::<u32>().unwrap(),
+            };
         }
-        if current_char == '\"' {
-            count_escaped -= 1;
-        }
-        previous = current_char;
+        panic!()
     }
-    count_chars as u32 - count_escaped as u32
 }
 
-fn encode_line(line: &str) -> u32 {
-    let mut count_encoded = 2;
-    for current_char in line.chars() {
-        count_encoded += 1;
-        if current_char == '\\' || current_char == '\"' {
-            count_encoded += 1;
+fn parse_list_into_distance(distances_str: &str) -> Vec<Distance> {
+    let mut distances: Vec<Distance> = Vec::new();
+    for line in distances_str.lines() {
+        distances.push(Distance::from(line));
+    }
+    distances
+}
+
+fn construct_distance_table(distances: &Vec<Distance>) -> HashMap<(String, String), u32> {
+    let mut distances_map = HashMap::new();
+    for distance in distances {
+        distances_map.insert(
+            (distance.origin.clone(), distance.destination.clone()),
+            distance.distance,
+        );
+        distances_map.insert(
+            (distance.destination.clone(), distance.origin.clone()),
+            distance.distance,
+        );
+    }
+    distances_map
+}
+
+fn get_all_locations(distances: &Vec<Distance>) -> HashSet<String> {
+    let mut cities = HashSet::new();
+    for distance in distances {
+        cities.insert(distance.origin.clone());
+        cities.insert(distance.destination.clone());
+    }
+    cities
+}
+
+fn calculate_shortest_distance(
+    cities: HashSet<String>,
+    distances_map: HashMap<(String, String), u32>,
+) -> u32 {
+    let mut min_distance = 0;
+    for route in cities.iter().permutations(cities.len()) {
+        let mut distance = 0;
+        for (city_a, city_b) in route.iter().tuple_windows() {
+            distance += distances_map[&(String::from(*city_a), String::from(*city_b))];
+        }
+        if min_distance == 0 {
+            min_distance = distance;
+        } else {
+            min_distance = cmp::min(min_distance, distance);
         }
     }
-    count_encoded - line.len() as u32
-}
-
-fn sum_lines(strings: &str) -> u32 {
-    strings
-        .lines()
-        .map(|x| count_characters(x))
-        .reduce(|a, b| a + b)
-        .unwrap()
-}
-
-fn sum_lines_2(strings: &str) -> u32 {
-    strings
-        .lines()
-        .map(|x| encode_line(x))
-        .reduce(|a, b| a + b)
-        .unwrap()
+    min_distance
 }
 
 fn main() {
-    let output = sum_lines_2(FILE_TEXT);
-    println!("{}", output);
+    let distances = parse_list_into_distance(FILE_TEXT);
+    let distance_table = construct_distance_table(&distances);
+    let cities = get_all_locations(&distances);
+    let min_distance = calculate_shortest_distance(cities, distance_table);
+    println!("this is it: {}", min_distance);
 }
 
 #[cfg(test)]
@@ -62,32 +94,119 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_encode_line() {
-        let str_1 = "\"\"";
-        let str_2 = "\"abc\"";
-        let str_3 = "\"aaa\\\"aaa\"";
-        let str_4 = "\"\\x27\"";
-        let str_5 = "\"\\\"";
+    fn test_calculate_shortest_distance() {
+        let mut cities = HashSet::new();
+        cities.insert(String::from("London"));
+        cities.insert(String::from("Dublin"));
+        cities.insert(String::from("Belfast"));
 
-        assert_eq!(encode_line(str_1), 4);
-        assert_eq!(encode_line(str_2), 4);
-        assert_eq!(encode_line(str_3), 6);
-        assert_eq!(encode_line(str_4), 5);
-        assert_eq!(encode_line(str_5), 5);
+        let mut map = HashMap::new();
+        map.insert((String::from("London"), String::from("Dublin")), 464);
+        map.insert((String::from("Dublin"), String::from("London")), 464);
+        map.insert((String::from("London"), String::from("Belfast")), 518);
+        map.insert((String::from("Belfast"), String::from("London")), 518);
+        map.insert((String::from("Dublin"), String::from("Belfast")), 141);
+        map.insert((String::from("Belfast"), String::from("Dublin")), 141);
+
+        assert_eq!(calculate_shortest_distance(cities, map), 605);
     }
 
     #[test]
-    fn test_count_characters() {
-        let str_1 = "\"\"";
-        let str_2 = "\"abc\"";
-        let str_3 = "\"aaa\\\"aaa\"";
-        let str_4 = "\"\\x27\"";
-        let str_5 = "\"\\\"";
+    fn test_get_all_locations() {
+        let mut distances = Vec::new();
+        distances.push(Distance {
+            origin: String::from("London"),
+            destination: String::from("Dublin"),
+            distance: 464,
+        });
+        distances.push(Distance {
+            origin: String::from("London"),
+            destination: String::from("Belfast"),
+            distance: 518,
+        });
+        distances.push(Distance {
+            origin: String::from("Dublin"),
+            destination: String::from("Belfast"),
+            distance: 141,
+        });
+        let mut cities = HashSet::new();
+        cities.insert(String::from("London"));
+        cities.insert(String::from("Dublin"));
+        cities.insert(String::from("Belfast"));
+        assert_eq!(get_all_locations(&distances), cities)
+    }
 
-        assert_eq!(count_characters(str_1), 2);
-        assert_eq!(count_characters(str_2), 2);
-        assert_eq!(count_characters(str_3), 3);
-        assert_eq!(count_characters(str_4), 5);
-        assert_eq!(count_characters(str_5), 2);
+    #[test]
+    fn test_construct_distance_table() {
+        let mut distances = Vec::new();
+        distances.push(Distance {
+            origin: String::from("London"),
+            destination: String::from("Dublin"),
+            distance: 464,
+        });
+        distances.push(Distance {
+            origin: String::from("London"),
+            destination: String::from("Belfast"),
+            distance: 518,
+        });
+        distances.push(Distance {
+            origin: String::from("Dublin"),
+            destination: String::from("Belfast"),
+            distance: 141,
+        });
+        let mut map = HashMap::new();
+        map.insert((String::from("London"), String::from("Dublin")), 464);
+        map.insert((String::from("Dublin"), String::from("London")), 464);
+        map.insert((String::from("London"), String::from("Belfast")), 518);
+        map.insert((String::from("Belfast"), String::from("London")), 518);
+        map.insert((String::from("Dublin"), String::from("Belfast")), 141);
+        map.insert((String::from("Belfast"), String::from("Dublin")), 141);
+        assert_eq!(construct_distance_table(&distances), map);
+    }
+
+    #[test]
+    fn test_distance_from_string_list() {
+        let str_1 = "London to Dublin = 464";
+        let str_2 = "London to Belfast = 518";
+        let str_3 = "Dublin to Belfast = 141";
+        let final_str = format!("{}\n{}\n{}", str_1, str_2, str_3);
+
+        let mut distances: Vec<Distance> = Vec::new();
+        distances.push(Distance::from(str_1));
+        distances.push(Distance::from(str_2));
+        distances.push(Distance::from(str_3));
+        assert_eq!(parse_list_into_distance(&final_str), distances);
+    }
+
+    #[test]
+    fn test_create_distance() {
+        let str_1 = "London to Dublin = 464";
+        let str_2 = "London to Belfast = 518";
+        let str_3 = "Dublin to Belfast = 141";
+
+        assert_eq!(
+            Distance::from(str_1),
+            Distance {
+                origin: String::from("London"),
+                destination: String::from("Dublin"),
+                distance: 464
+            }
+        );
+        assert_eq!(
+            Distance::from(str_2),
+            Distance {
+                origin: String::from("London"),
+                destination: String::from("Belfast"),
+                distance: 518
+            }
+        );
+        assert_eq!(
+            Distance::from(str_3),
+            Distance {
+                origin: String::from("Dublin"),
+                destination: String::from("Belfast"),
+                distance: 141
+            }
+        );
     }
 }
