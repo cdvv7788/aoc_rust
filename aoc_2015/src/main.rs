@@ -162,7 +162,8 @@ fn find_next_password(input: &str) -> String {
 }
 
 fn main() {
-    let input = "vzbxkghb";
+    let input = "vzbxkghb"; // first run
+    let input = "vzbxxyzz"; // second run
     let new_password = find_next_password(input);
     println!("The new password is {}", new_password);
 }
