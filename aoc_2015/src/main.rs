@@ -30,7 +30,7 @@ fn parse_input(input: String) -> String {
 fn main() {
     let mut input = "1113222113".to_string();
 
-    for _ in 0..40 {
+    for _ in 0..50 {
         //println!("current output is {}", input);
         input = parse_input(input);
     }
